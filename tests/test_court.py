@@ -3,8 +3,6 @@ import pytest
 
 from courtbird.court import Calibration, landmarks
 from courtbird.court.players import boxes_to_people, foot_points
-from courtbird.perception.tracker import GreedyTracker
-from courtbird.schema import Person
 from courtbird.sports import VOLLEYBALL as V
 
 # A known court->image homography (camera looking at the court from one end).
@@ -60,10 +58,3 @@ def test_visibility_marks_outside_image_hidden():
     c = _calib()
     vis, hid = c.visibility(V)
     assert vis and isinstance(vis[0][0], tuple)
-
-
-def test_tracker_keeps_ids():
-    t = GreedyTracker(max_dist=1.0)
-    a = t.update([Person(-1, 1, 1), Person(-1, 5, 5)])
-    b = t.update([Person(-1, 5.2, 5.1), Person(-1, 1.1, 1.0), Person(-1, 9, 9)])
-    assert [p.id for p in b[:2]] == [a[1].id, a[0].id] and b[2].id not in (a[0].id, a[1].id)

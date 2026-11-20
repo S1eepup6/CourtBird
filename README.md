@@ -39,9 +39,22 @@ Detector benchmark on the 1280x720 test video, RTX 3060: rtmdet-nano 105 fps, rt
 .venv\Scripts\python -m tools.debug_frame VIDEO calib.json out.png --sec 30
 ```
 
+How tracking works (`courtbird/perception/`): detections are tracked in **image space**, so identity
+does not depend on the court calibration (a calibration fixed later by hand does not invalidate
+tracks). Kalman filter on the foot point + colour-histogram appearance + ByteTrack-style two-stage
+Hungarian matching; distances are measured in person heights. Offline, tracklets are stitched
+across occlusions, then projected through the calibration, non-players are dropped (outside the
+court, or standing still beside it), gaps are filled/smoothed, and each track's team is the side
+of the net it spends most of its time on.
+
+Measured on the 20 s test clip: ids 193 -> 36, median track length 1.5 s -> 17 s. Speed (RTX 3060,
+1280x720, decode/inference/tracking in overlapping threads): ~43 fps with rtmdet-m, ~78 fps with
+rtmdet-nano; `--stride 2` halves the time again. Check a record with `python -m tools.track_metrics`.
+
 Current limits: one fixed calibration per video (the camera may drift slightly), foot-point
-projection only, team = side of the net (unstable for players right at the net), placeholder
-greedy tracker, no ball yet. Processing speed is ~26 fps with rtmdet-m on an RTX 3060.
+projection only, no ball yet. Everything downstream of the calibration is only as good as the
+calibration: click the landmarks carefully with `tools.calibrate` (a calibration eyeballed from
+a still frame put far-side players outside the court in the test video).
 
 ## Viewer (M-V1)
 

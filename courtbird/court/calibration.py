@@ -55,6 +55,22 @@ class Calibration:
         pts = np.asarray(pts, np.float64).reshape(-1, 1, 2)
         return cv2.perspectiveTransform(pts, self.H).reshape(-1, 2)
 
+    def project(self, pts: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """image -> court like image_to_court, but also returns a validity mask. Points on the
+        far side of the horizon line (stands, ceiling) project to garbage; they are marked
+        invalid (NaN) instead of being mirrored onto the court."""
+        pts = np.asarray(pts, np.float64).reshape(-1, 2)
+        ref = np.c_[[[x, y] for _, x, y in self.points], np.ones(len(self.points))] @ self.H.T
+        sign = np.sign(np.median(ref[:, 2])) or 1.0
+        h = np.c_[pts, np.ones(len(pts))] @ self.H.T
+        w = h[:, 2] * sign
+        valid = w > 1e-9
+        xy = np.full((len(pts), 2), np.nan)
+        xy[valid] = h[valid, :2] / h[valid, 2:3]
+        valid &= np.all(np.abs(np.nan_to_num(xy, nan=1e9)) < 80.0, axis=1)
+        xy[~valid] = np.nan
+        return xy, valid
+
     def court_to_image(self, pts: np.ndarray) -> np.ndarray:
         pts = np.asarray(pts, np.float64).reshape(-1, 1, 2)
         return cv2.perspectiveTransform(pts, np.linalg.inv(self.H)).reshape(-1, 2)
