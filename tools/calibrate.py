@@ -15,7 +15,7 @@ import numpy as np
 
 from courtbird.court import Calibration, landmarks
 from courtbird.sports import SPORTS
-from tools.overlay import draw_court
+from courtbird.court.draw import draw_court
 
 DEFAULT = ["corner_near_left", "corner_near_right", "post_right", "post_left",
            "corner_far_right", "corner_far_left"]

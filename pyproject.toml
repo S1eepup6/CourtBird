@@ -3,7 +3,7 @@ name = "courtbird"
 version = "0.0.1"
 description = "Turn net-sport match video into a top-view court diagram."
 requires-python = ">=3.10"
-dependencies = ["numpy", "opencv-python"]
+dependencies = ["numpy", "opencv-python", "rtmlib", "onnxruntime-gpu", "tqdm", "PySide6"]
 
 [project.optional-dependencies]
 dev = ["pytest"]

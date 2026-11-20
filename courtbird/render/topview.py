@@ -36,6 +36,11 @@ class TopViewRenderer:
         m = self.spec.free_zone
         return int(round((x + m) * self.s)), int(round((y + m) * self.s))
 
+    def to_court(self, px: float, py: float) -> tuple[float, float]:
+        """Inverse of to_px (pixel in the rendered image -> court metres)."""
+        m = self.spec.free_zone
+        return px / self.s - m, py / self.s - m
+
     def _draw_court(self) -> np.ndarray:
         sp, img = self.spec, np.full((self.h, self.w, 3), BG, np.uint8)
         cv2.rectangle(img, (0, 0), (self.w - 1, self.h - 1), FLOOR, -1)

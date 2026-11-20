@@ -9,7 +9,7 @@ from courtbird.render import TopViewRenderer
 from courtbird.render.topview import TEAM_COLORS, UNKNOWN_TEAM
 from courtbird.schema import FrameState, Person
 from courtbird.sports import SPORTS
-from tools.overlay import draw_court
+from courtbird.court.draw import draw_court
 
 ap = argparse.ArgumentParser()
 ap.add_argument("video"); ap.add_argument("calib"); ap.add_argument("out")

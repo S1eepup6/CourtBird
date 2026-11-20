@@ -42,3 +42,18 @@ Detector benchmark on the 1280x720 test video, RTX 3060: rtmdet-nano 105 fps, rt
 Current limits: one fixed calibration per video (the camera may drift slightly), foot-point
 projection only, team = side of the net (unstable for players right at the net), placeholder
 greedy tracker, no ball yet. Processing speed is ~26 fps with rtmdet-m on an RTX 3060.
+
+## Viewer (M-V1)
+
+```
+.venv\Scripts\python -m courtbird.viewer [record.cbrec]
+```
+
+- File > Open record: view a saved `.cbrec` instantly (the source video is auto-linked when it sits
+  next to / one folder above the record; File > Link video / calibration otherwise).
+- File > Analyze video: runs detection in the background, then opens the result.
+- Edit the record in the top view: drag to move, double-click to add a player, right-click to place
+  the ball (right-click on the ball removes it), Delete, `T` team (`Shift+T` for all following
+  frames), `I` rename id (optionally for all following frames), Ctrl+Z undo, Ctrl+S save.
+- With a calibration linked, the source video panel shows the court and every recorded player
+  re-projected onto the picture, which makes calibration errors easy to spot.
