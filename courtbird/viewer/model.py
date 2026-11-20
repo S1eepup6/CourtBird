@@ -77,6 +77,16 @@ class EditSession:
                     p.team = team
         self.dirty = True
 
+    def swap_teams(self) -> None:
+        """Exchange team 0 and 1 in every frame (the blue/red side is arbitrary until
+        someone compares it with the video)."""
+        self.checkpoint(list(range(len(self))))
+        for f in self.record.frames:
+            for p in f.people:
+                if p.team is not None:
+                    p.team = 1 - p.team
+        self.dirty = True
+
     def rename(self, pos: int, old: int, new: int, propagate: bool = True) -> bool:
         """Change an id from this frame on. Refuses if `new` already exists in an affected frame."""
         rng = range(pos, len(self)) if propagate else [pos]

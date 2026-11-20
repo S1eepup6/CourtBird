@@ -88,17 +88,22 @@ class Calibration:
         return _mask_polys(mask, xs[0], ys[0], step), _mask_polys(1 - mask, xs[0], ys[0], step)
 
     # --- io ------------------------------------------------------------------
-    def save(self, path: str | Path) -> None:
-        d = {"sport": self.sport, "image_size": list(self.image_size),
-             "points": [[n, x, y] for n, x, y in self.points]}
-        Path(path).write_text(json.dumps(d, indent=1), encoding="utf-8")
+    def to_dict(self) -> dict:
+        return {"sport": self.sport, "image_size": list(self.image_size),
+                "points": [[n, x, y] for n, x, y in self.points]}
 
     @classmethod
-    def load(cls, path: str | Path, spec: SportSpec) -> "Calibration":
-        d = json.loads(Path(path).read_text(encoding="utf-8"))
+    def from_dict(cls, d: dict, spec: SportSpec) -> "Calibration":
         if d["sport"] != spec.name:
             raise ValueError(f"calibration is for {d['sport']}, not {spec.name}")
         return cls.from_points(spec, [tuple(p) for p in d["points"]], tuple(d["image_size"]))
+
+    def save(self, path: str | Path) -> None:
+        Path(path).write_text(json.dumps(self.to_dict(), indent=1), encoding="utf-8")
+
+    @classmethod
+    def load(cls, path: str | Path, spec: SportSpec) -> "Calibration":
+        return cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")), spec)
 
 
 def _mask_polys(mask: np.ndarray, x0: float, y0: float, step: float) -> list[Polygon]:

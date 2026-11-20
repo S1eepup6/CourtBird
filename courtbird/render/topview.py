@@ -21,9 +21,23 @@ SHADE = (0, 0, 0)
 SHADE_ALPHA = 0.55
 
 
+def half_teams(spec: SportSpec, state: FrameState) -> tuple[int | None, int | None]:
+    """Team colour of each half of the court (before the net, after the net), taken as the
+    majority team of the people standing in it; None when nobody on it has a team. Teams swap
+    sides between sets, so this is read from the data instead of being fixed."""
+    out = []
+    for lo, hi in ((0.0, spec.net_x), (spec.net_x, spec.length)):
+        votes = [p.team for p in state.people
+                 if p.team is not None and lo <= p.x < hi and 0 <= p.y <= spec.width]
+        out.append(max((0, 1), key=votes.count) if votes else None)
+    return out[0], out[1]
+
+
 class TopViewRenderer:
-    def __init__(self, spec: SportSpec, px_per_m: float = 40.0, show_ids: bool = True):
+    def __init__(self, spec: SportSpec, px_per_m: float = 40.0, show_ids: bool = True,
+                 team_zones: bool = False):
         self.spec = spec
+        self.team_zones = team_zones  # tint each half of the court in its team colour
         self.s = px_per_m
         self.show_ids = show_ids
         m = spec.free_zone
@@ -63,6 +77,14 @@ class TopViewRenderer:
 
     def render(self, state: FrameState) -> np.ndarray:
         img = self._base.copy()
+        if self.team_zones:
+            sp = self.spec
+            for team, (x0, x1) in zip(half_teams(sp, state), ((0.0, sp.net_x), (sp.net_x, sp.length))):
+                if team is None:
+                    continue
+                a, b = self.to_px(x0, 0), self.to_px(x1, sp.width)
+                roi = img[a[1]:b[1], a[0]:b[0]]
+                roi[:] = (0.78 * roi + 0.22 * np.array(TEAM_COLORS[team])).astype(np.uint8)
         if state.hidden_regions:
             self._fill_polys(img, state.hidden_regions)
 

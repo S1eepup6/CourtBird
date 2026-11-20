@@ -14,7 +14,7 @@ from .. import record as rec_io
 from ..court import Calibration
 from ..court.draw import draw_court
 from ..render import TopViewRenderer
-from ..render.topview import TEAM_COLORS, UNKNOWN_TEAM
+from ..render.topview import TEAM_COLORS, UNKNOWN_TEAM, half_teams
 from ..sports import SPORTS
 from .analyze_dialog import AnalyzeDialog
 from .model import EditSession
@@ -35,7 +35,7 @@ class MainWindow(QMainWindow):
         self.pos = 0
         self._acc = 0.0
 
-        self.top = TopViewWidget(TopViewRenderer(self.spec))
+        self.top = TopViewWidget(TopViewRenderer(self.spec, team_zones=True))
         self.video_view = ImageView()
         self.video_view.setVisible(False)
         split = QSplitter(Qt.Horizontal)
@@ -43,6 +43,8 @@ class MainWindow(QMainWindow):
         split.addWidget(self.top)
         split.setStretchFactor(0, 1)
         split.setStretchFactor(1, 1)
+        split.setSizes([700, 700])
+        self.splitter = split
 
         self.play_btn = QPushButton("▶")
         self.play_btn.setFixedWidth(44)
@@ -56,9 +58,11 @@ class MainWindow(QMainWindow):
         self.speed.setCurrentIndex(2)
         self.ids = QCheckBox("ID 표시")
         self.ids.setChecked(True)
+        self.zones = QCheckBox("팀 영역 표시")
+        self.zones.setChecked(True)
         self.time_label = QLabel("0:00.0")
         self.time_label.setMinimumWidth(110)
-        for w in (self.play_btn, self.prev_btn, self.next_btn, self.slider, self.speed, self.ids):
+        for w in (self.play_btn, self.prev_btn, self.next_btn, self.slider, self.speed, self.ids, self.zones):
             w.setFocusPolicy(Qt.NoFocus)
         bar = QHBoxLayout()
         for w in (self.play_btn, self.prev_btn, self.next_btn):
@@ -67,6 +71,7 @@ class MainWindow(QMainWindow):
         bar.addWidget(self.time_label)
         bar.addWidget(self.speed)
         bar.addWidget(self.ids)
+        bar.addWidget(self.zones)
         root = QWidget()
         lay = QVBoxLayout(root)
         lay.addWidget(split, 1)
@@ -82,6 +87,7 @@ class MainWindow(QMainWindow):
         self.next_btn.clicked.connect(lambda: self.step(1))
         self.slider.valueChanged.connect(self._slider)
         self.ids.toggled.connect(self._ids_toggled)
+        self.zones.toggled.connect(self._zones_toggled)
         self.top.changed.connect(self._edited)
         self.top.selection_changed.connect(self._status)
         self._build_menu()
@@ -115,6 +121,7 @@ class MainWindow(QMainWindow):
         self._act(e, "팀 전환 (이 프레임)", lambda: self.toggle_team(False), "T")
         self._act(e, "팀 전환 (이후 모든 프레임)", lambda: self.toggle_team(True), "Shift+T")
         self._act(e, "ID 변경…", self.rename_selected, "I")
+        self._act(e, "파랑/빨강 팀 서로 바꾸기 (전체)", self.swap_teams, "Ctrl+T")
         p = self.menuBar().addMenu("재생")
         self._act(p, "재생/일시정지", self.toggle_play, "Space")
         self._act(p, "이전 프레임", lambda: self.step(-1), "Left")
@@ -158,13 +165,18 @@ class MainWindow(QMainWindow):
         self.timer.stop()
         self.play_btn.setText("▶")
         self.spec = SPORTS[record.sport]
-        self.top.renderer = TopViewRenderer(self.spec, show_ids=self.ids.isChecked())
+        self.top.renderer = TopViewRenderer(self.spec, show_ids=self.ids.isChecked(), team_zones=self.zones.isChecked())
         self.session = EditSession(record, self.spec)
         self.top.session = self.session
         self.top.selected = None
         self.slider.blockSignals(True)
         self.slider.setRange(0, max(0, len(self.session) - 1))
         self.slider.blockSignals(False)
+        if record.calibration:
+            try:
+                self.calib = Calibration.from_dict(record.calibration, self.spec)
+            except Exception:
+                self.calib = None
         self.pos = 0
         self.show_frame(0)
         self._update_title()
@@ -200,6 +212,7 @@ class MainWindow(QMainWindow):
             self.video.close()
         self.video = v
         self.video_view.setVisible(True)
+        self.splitter.setSizes([700, 700])
         self.show_frame(self.pos)
 
     def link_calibration(self):
@@ -302,7 +315,11 @@ class MainWindow(QMainWindow):
         if img is None:
             self.video_view.set_image(None)
             return
+        if self.calib is None:
+            cv2.putText(img, "link calibration (File menu) to see team zones", (20, 40), 0, 0.9, (0, 255, 255), 2)
         if self.calib is not None:
+            if self.zones.isChecked():
+                self._draw_team_zones(img, f)
             draw_court(img, self.calib, self.spec, show_points=False)
             for p in f.people:
                 u, v = self.calib.court_to_image(np.array([[p.x, p.y]]))[0]
@@ -315,6 +332,37 @@ class MainWindow(QMainWindow):
                 u, v = self.calib.court_to_image(np.array([[f.ball.x, f.ball.y]]))[0]
                 cv2.circle(img, (int(u), int(v)), 7, (255, 255, 255), -1, cv2.LINE_AA)
         self.video_view.set_image(img)
+
+    def _draw_team_zones(self, img, frame_state):
+        """Tint each half of the court in its team colour and label it, so the video can be
+        compared with the top view (which side is blue?)."""
+        sp = self.spec
+        overlay = img.copy()
+        labels = []
+        for team, (x0, x1) in zip(half_teams(sp, frame_state), ((0.0, sp.net_x), (sp.net_x, sp.length))):
+            if team is None:
+                continue
+            quad = self.calib.court_to_image(np.array([(x0, 0), (x1, 0), (x1, sp.width), (x0, sp.width)]))
+            cv2.fillPoly(overlay, [quad.astype(np.int32)], TEAM_COLORS[team])
+            cx, cy = self.calib.court_to_image(np.array([[(x0 + x1) / 2, sp.width / 2]]))[0]
+            labels.append((("BLUE", "RED")[team], int(cx), int(cy), TEAM_COLORS[team]))
+        cv2.addWeighted(overlay, 0.28, img, 0.72, 0, img)
+        for text, cx, cy, col in labels:
+            (tw, _), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1.4, 4)
+            cv2.putText(img, text, (cx - tw // 2, cy), cv2.FONT_HERSHEY_SIMPLEX, 1.4, (255, 255, 255), 7, cv2.LINE_AA)
+            cv2.putText(img, text, (cx - tw // 2, cy), cv2.FONT_HERSHEY_SIMPLEX, 1.4, col, 4, cv2.LINE_AA)
+
+    def swap_teams(self):
+        if not self.session:
+            return
+        self.session.swap_teams()
+        self.top.refresh()
+        self._edited()
+
+    def _zones_toggled(self, on: bool):
+        self.top.renderer.team_zones = on
+        self.top.refresh()
+        self._draw_video()
 
     def _ids_toggled(self, on: bool):
         self.top.renderer.show_ids = on

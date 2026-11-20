@@ -28,7 +28,7 @@ def analyze(video: str | Path, calib: Calibration, spec: SportSpec, model: str =
     det = PersonDetector(model)
     tracker = GreedyTracker(max_dist=1.5 * stride)
     visible, hidden = calib.visibility(spec)
-    rec = Record(sport=spec.name, fps=fps / stride, source=Path(video).name)
+    rec = Record(sport=spec.name, fps=fps / stride, source=Path(video).name, calibration=calib.to_dict())
     idx = first
     while idx < last:
         ok, frame = cap.read()

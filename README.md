@@ -57,3 +57,7 @@ greedy tracker, no ball yet. Processing speed is ~26 fps with rtmdet-m on an RTX
   frames), `I` rename id (optionally for all following frames), Ctrl+Z undo, Ctrl+S save.
 - With a calibration linked, the source video panel shows the court and every recorded player
   re-projected onto the picture, which makes calibration errors easy to spot.
+- "팀 영역 표시": tints each half of the court (video and top view) in the colour of the team standing
+  there and labels it BLUE / RED, so the video can be compared with the top view. Records store their
+  calibration, so this works as soon as a record is opened. Edit > swap teams (Ctrl+T) exchanges the
+  colours for the whole record when blue turns out to be the other side.

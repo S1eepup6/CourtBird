@@ -81,3 +81,23 @@ def test_viewer_smoke(tmp_path):
     w.session.dirty = False
     w.close()
     app.processEvents()
+
+
+def test_swap_teams_and_half_teams():
+    from courtbird.render.topview import half_teams
+    s = _session()
+    assert half_teams(V, s.frame(0)) == (0, 1)
+    s.swap_teams()
+    assert half_teams(V, s.frame(0)) == (1, 0)
+    assert s.person(2, 1).team == 1
+    s.undo()
+    assert s.person(2, 1).team == 0
+    assert half_teams(V, FrameState()) == (None, None)
+
+
+def test_record_keeps_calibration(tmp_path):
+    r = _session().record
+    r.calibration = {"sport": "volleyball", "image_size": [10, 10], "points": []}
+    p = tmp_path / "c.cbrec"
+    record.save(r, p)
+    assert record.load(p).calibration == r.calibration

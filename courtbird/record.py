@@ -21,6 +21,7 @@ class Record:
     fps: float
     source: str = ""
     frames: list[FrameState] = field(default_factory=list)
+    calibration: dict | None = None  # Calibration.to_dict(), so a record can be re-projected/overlaid
 
 
 def save(record: Record, path: str | Path) -> None:
@@ -29,6 +30,7 @@ def save(record: Record, path: str | Path) -> None:
         "sport": record.sport,
         "fps": record.fps,
         "source": record.source,
+        "calibration": record.calibration,
         "frames": [asdict(f) for f in record.frames],
     }
     with gzip.open(path, "wt", encoding="utf-8") as fh:
@@ -49,4 +51,5 @@ def load(path: str | Path) -> Record:
             visible_region=[tuple(p) for p in f["visible_region"]] if f["visible_region"] else None,
             hidden_regions=[[tuple(p) for p in poly] for poly in f["hidden_regions"]],
         ))
-    return Record(sport=data["sport"], fps=data["fps"], source=data["source"], frames=frames)
+    return Record(sport=data["sport"], fps=data["fps"], source=data["source"], frames=frames,
+                  calibration=data.get("calibration"))
