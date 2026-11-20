@@ -29,3 +29,16 @@ newest cuDNN (9.28) failed with onnxruntime 1.23.2; the pins above work.
 
 Detector benchmark on the 1280x720 test video, RTX 3060: rtmdet-nano 105 fps, rtmdet-m 31 fps
 (end-to-end per frame, including CPU preprocessing).
+
+## Usage (M2)
+
+```
+.venv\Scripts\python -m tools.calibrate VIDEO calib.json      # click court landmarks (once per camera position)
+.venv\Scripts\python -m tools.overlay VIDEO calib.json out.png --sec 30   # check the calibration
+.venv\Scripts\python -m tools.analyze VIDEO calib.json out.cbrec --start 0 --end 60
+.venv\Scripts\python -m tools.debug_frame VIDEO calib.json out.png --sec 30
+```
+
+Current limits: one fixed calibration per video (the camera may drift slightly), foot-point
+projection only, team = side of the net (unstable for players right at the net), placeholder
+greedy tracker, no ball yet. Processing speed is ~26 fps with rtmdet-m on an RTX 3060.

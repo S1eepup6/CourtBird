@@ -12,6 +12,7 @@ class SportSpec:
     length: float  # x extent, metres (net sits at length / 2)
     width: float  # y extent, metres
     free_zone: float  # margin drawn around the court, metres
+    post_offset: float = 1.0  # net posts stand this far outside each sideline, metres
     # Extra court lines as ((x1, y1), (x2, y2)) segments, e.g. attack lines.
     lines: tuple[tuple[Point, Point], ...] = field(default_factory=tuple)
 
