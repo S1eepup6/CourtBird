@@ -45,15 +45,14 @@
     re-calibration per shot.
 
 ### P3 - polish and release
-12. **Choose the project licence** (none set yet) and add third-party notices (RTMDet/Apache-2.0, OpenCV, PySide6/LGPL,
-    SciPy, rtmlib; weights are downloaded, not bundled).
+12. ~~Choose the project licence and add third-party notices~~ Done: Apache-2.0, see `LICENSE` and
+    `THIRD_PARTY_NOTICES.md` (first public release, 0.1.0).
 13. Other sports: add `SportSpec`s for badminton/tennis (court lines, singles/doubles, net height) and check landmarks.
 14. Viewer: export top-view video/GIF, ball labelling, font check on Windows, packaging (installer or `pipx`).
 15. Repo hygiene before going public: CI running the tests, pinned dependencies, setup instructions for non-Windows /
     CPU-only, remove machine-specific paths from docs.
 
 ## Decisions waiting on the owner
-- Project licence (item 12).
 - Whether to spend time labelling (calibration points, IDs, later the ball) - items 1, 2 and 10 depend on it.
 - More video: another venue and a moving-camera clip (item 6).
 - Which sport after volleyball (item 13).

@@ -12,7 +12,7 @@ t = time.perf_counter()
 res = [det(f) for f in frames]
 dt = time.perf_counter() - t
 print(f"{model}: {n/dt:.1f} fps, mean persons/frame {sum(len(r) for r in res)/n:.1f}, out cols {res[0].shape}")
-cv2.imwrite("docs/det_sample.jpg", frames[0])
 for b in res[0]:
     x1,y1,x2,y2 = map(int,b[:4]); cv2.rectangle(frames[0],(x1,y1),(x2,y2),(0,255,0),2)
-cv2.imwrite("docs/det_sample.jpg", frames[0])
+if len(sys.argv) > 4:  # optional: write an annotated frame (keep it out of git: it is a video frame)
+    cv2.imwrite(sys.argv[4], frames[0])

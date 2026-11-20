@@ -1,12 +1,38 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "courtbird"
-version = "0.0.1"
-description = "Turn net-sport match video into a top-view court diagram."
+version = "0.1.0"
+description = "Turn net-sport match video (volleyball first) into a top-view court diagram."
+readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["numpy", "opencv-python", "rtmlib", "onnxruntime-gpu", "tqdm", "PySide6"]
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+]
+# rtmlib is NOT listed: its own requirements pull the CPU onnxruntime (which shadows the GPU build)
+# and two OpenCV builds. Install it with `pip install --no-deps rtmlib` (see README).
+dependencies = [
+    "numpy",
+    "opencv-python",
+    "scipy",
+    "tqdm",
+    "PySide6-Essentials",
+]
 
 [project.optional-dependencies]
+gpu = ["onnxruntime-gpu"]
+cpu = ["onnxruntime"]
 dev = ["pytest"]
+
+[project.urls]
+Homepage = "https://github.com/S1eepup6/CourtBird"
 
 [tool.setuptools.packages.find]
 include = ["courtbird*"]

@@ -1,139 +1,144 @@
 # CourtBird
 
-Turns net-sport match video (volleyball first) into a top-view court diagram.
+Turns match video of a net sport (volleyball first) into a **top-down court diagram**: every player is a
+coloured circle with an id, the colour says which side of the net they play on, and the video and the
+diagram can be inspected, played back and corrected side by side.
 
-Pipeline: video -> detect/track people and ball -> court calibration (classical line
-detection, manual click fallback) -> court-space record -> top-view renderer / viewer.
+![CourtBird viewer: source video with the calibrated court and projected players on the left, top view with team zones and the estimated camera position on the right](docs/screenshot.png)
 
-Status: M0 done (schema, volleyball spec, top-view renderer, record format).
+*The viewer. Left: the source video with the court and every recorded player projected back onto it. Right: the
+top view with team zones (blue / red) and the estimated camera position ("CAM"). The scoreboard area of the
+frame is obscured; the video itself is not part of this repository.*
 
-Court coordinates are metres: x along the long axis (net at L/2), y across.
-Perception and rendering only talk through `courtbird.schema.FrameState`.
+> **Status: early alpha (0.1.0).** Developed and measured on **one** match video from a fixed camera. Several
+> parts are validated only on synthetic data (see [Limits](#limits)). The ball is not detected yet. Expect rough
+> edges. See [docs/ROADMAP.md](docs/ROADMAP.md) for what is done and what is missing.
 
-```
-pip install -e .[dev]
-pytest
-```
+## What it does
 
-## Setup (Windows, NVIDIA GPU)
+1. **Detects and tracks people** (RTMDet, Kalman filter + colour appearance + ByteTrack-style matching), keeping
+   ids through occlusion by stitching tracklets offline.
+2. **Maps them onto the court** with a homography from a few clicked court landmarks, drops non-players
+   (spectators, staff) and assigns teams by the side of the net.
+3. **Handles a moving camera** (pan / tilt / zoom) by estimating the camera motion from the static background.
+4. **Recognises where the video was shot from** (behind an end line, from a sideline, from a corner), both from
+   the calibration and, independently, from where people stand.
+5. **Saves everything to a record file** (`.cbrec`) that a viewer opens instantly; records can be hand-corrected
+   (move / add / delete players, swap teams, rename ids) and saved again.
 
-```
+Renderer and perception only talk through court-space positions (`courtbird.schema.FrameState`, metres, net at
+the middle), so another detector can be plugged in without touching the drawing code.
+
+## Install
+
+Developed and tested on Windows 11, Python 3.10, an NVIDIA RTX 3060. Other platforms are untested (the code is
+plain Python; adapt the paths and the CUDA step).
+
+```powershell
+git clone https://github.com/S1eepup6/CourtBird.git
+cd CourtBird
 python -m venv .venv
-.venv\Scripts\python -m pip install -e .[dev] rtmlib onnxruntime-gpu tqdm
+.venv\Scripts\python -m pip install -e ".[gpu,dev]"      # no NVIDIA GPU: use ".[cpu,dev]" instead
+.venv\Scripts\python -m pip install --no-deps rtmlib     # --no-deps: rtmlib would pull a CPU onnxruntime
+```
+
+GPU only - CUDA 12 libraries for ONNX Runtime (proprietary NVIDIA wheels, see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)). These pins matched the system CUDA 12.8; the newest cuDNN
+(9.28) failed with onnxruntime 1.23.2:
+
+```powershell
 .venv\Scripts\python -m pip install nvidia-cudnn-cu12==9.10.2.21 nvidia-cublas-cu12==12.8.4.1 nvidia-cuda-runtime-cu12==12.8.90 nvidia-cuda-nvrtc-cu12==12.8.93 nvidia-cufft-cu12==11.3.3.83 nvidia-curand-cu12==10.3.9.90 nvidia-nvjitlink-cu12==12.8.93
-.venv\Scripts\python tools/download_models.py
 ```
 
-Install only `onnxruntime-gpu` (not `onnxruntime` alongside it) or CUDA will not load. The
-newest cuDNN (9.28) failed with onnxruntime 1.23.2; the pins above work.
+Download the detector weights (not shipped; hashes recorded in [docs/licenses.md](docs/licenses.md)):
 
-Detector benchmark on the 1280x720 test video, RTX 3060: rtmdet-nano 105 fps, rtmdet-m 31 fps
-(end-to-end per frame, including CPU preprocessing).
-
-## Usage (M2)
-
-```
-.venv\Scripts\python -m tools.calibrate VIDEO calib.json      # click court landmarks (once per camera position)
-.venv\Scripts\python -m tools.overlay VIDEO calib.json out.png --sec 30   # check the calibration
-.venv\Scripts\python -m tools.analyze VIDEO calib.json out.cbrec --start 0 --end 60
-.venv\Scripts\python -m tools.debug_frame VIDEO calib.json out.png --sec 30
+```powershell
+.venv\Scripts\python tools\download_models.py
 ```
 
-How tracking works (`courtbird/perception/`): detections are tracked in **image space**, so identity
-does not depend on the court calibration (a calibration fixed later by hand does not invalidate
-tracks). Kalman filter on the foot point + colour-histogram appearance + ByteTrack-style two-stage
-Hungarian matching; distances are measured in person heights. Offline, tracklets are stitched
-across occlusions, then projected through the calibration, non-players are dropped (outside the
-court, or standing still beside it), gaps are filled/smoothed, and each track's team is the side
-of the net it spends most of its time on.
+Check the install: `.venv\Scripts\python -m pytest` (the tests need no GPU, video or weights).
 
-Measured on the 20 s test clip: ids 193 -> 36, median track length 1.5 s -> 17 s. Speed (RTX 3060,
-1280x720, decode/inference/tracking in overlapping threads): ~43 fps with rtmdet-m, ~78 fps with
-rtmdet-nano; `--stride 2` halves the time again. Check a record with `python -m tools.track_metrics`.
+## Use
 
-Current limits: one fixed calibration per video (the camera may drift slightly), foot-point
-projection only, no ball yet. Everything downstream of the calibration is only as good as the
-calibration: click the landmarks carefully with `tools.calibrate` (a calibration eyeballed from
-a still frame put far-side players outside the court in the test video).
-
-## Viewer (M-V1)
-
-```
-.venv\Scripts\python -m courtbird.viewer [record.cbrec]
+```powershell
+# 1. calibrate once per camera position: click court landmarks on a frame (r = snap to lines/edges)
+.venv\Scripts\python -m tools.calibrate VIDEO.mp4 calib.json --sec 5
+# 2. check it
+.venv\Scripts\python -m tools.overlay VIDEO.mp4 calib.json check.png --sec 30
+# 3. analyse (add --stride 2 for twice the speed, --no-camera for a fixed camera)
+.venv\Scripts\python -m tools.analyze VIDEO.mp4 calib.json match.cbrec --start 0 --end 60
+# 4. look at / correct the result
+.venv\Scripts\python -m courtbird.viewer match.cbrec
 ```
 
-- File > Open record: view a saved `.cbrec` instantly (the source video is auto-linked when it sits
-  next to / one folder above the record; File > Link video / calibration otherwise).
-- File > Analyze video: runs detection in the background, then opens the result.
-- Edit the record in the top view: drag to move, double-click to add a player, right-click to place
-  the ball (right-click on the ball removes it), Delete, `T` team (`Shift+T` for all following
-  frames), `I` rename id (optionally for all following frames), Ctrl+Z undo, Ctrl+S save.
-- With a calibration linked, the source video panel shows the court and every recorded player
-  re-projected onto the picture, which makes calibration errors easy to spot.
-- "팀 영역 표시": tints each half of the court (video and top view) in the colour of the team standing
-  there and labels it BLUE / RED, so the video can be compared with the top view. Records store their
-  calibration, so this works as soon as a record is opened. Edit > swap teams (Ctrl+T) exchanges the
-  colours for the whole record when blue turns out to be the other side.
+The viewer (Korean UI) can also run the analysis itself (File > Analyze video). Top-view editing: drag to move,
+double-click to add a player, right-click to place the ball, `Delete`, `T` swap a player's team (`Shift+T` for
+all following frames), `I` rename id, `Ctrl+T` swap blue/red everywhere, `Ctrl+Z` undo, `Ctrl+S` save,
+`Ctrl+I` shooting-viewpoint info. `python -m tools.track_metrics match.cbrec` prints tracking-quality proxies.
 
-## Calibration refinement (line/edge snapping)
+## How it works
 
-`courtbird/court/refine.py` re-fits a rough calibration to the image: it builds "line evidence"
-(thin bright ridges + strong colour-region boundaries, people masked out), scores a calibration by
-how close the projected court lines are to that evidence, and optimises the four court corners
-(each may move <= 35 px, so another sport's lines further away cannot capture the fit).
-Use it from the calibration tool (`r` key) or `python -m tools.refine_demo VIDEO SEED.json out.png`.
+- **Tracking happens in image space** (distances in "person heights"), so identity does not depend on the court
+  calibration and a calibration corrected later does not invalidate tracks. Offline, tracklets are stitched across
+  occlusions, projected through the calibration, filtered (outside the court / standing still beside it), gap-filled
+  and smoothed; a track's team is the side of the net it spends most of its time on.
+  On the 20 s test clip this cut the id count from 193 to 36 and raised the median track length from 1.5 s to 17 s.
+  Speed on an RTX 3060 at 1280x720 with decode, inference and tracking in overlapping threads: ~43 fps with
+  `rtmdet-m`, ~78 fps with `rtmdet-nano`.
+- **Calibration** is a plane homography from clicked landmarks (court corners, net posts, attack lines). A
+  refinement step (`courtbird/court/refine.py`) snaps the corners to line / colour-edge evidence, moving each at
+  most 35 px. It tidies hand clicks and follows slow drift but is **not precise** (perturbed seeds agree to ~23 px)
+  and cannot find the court from scratch: on the test venue the court is a coloured floor area and the strongest
+  white lines belong to another sport, so a line-only detector failed.
+- **Camera motion** (`courtbird/court/camera_motion.py`): background corner features, spread over a grid, are
+  tracked from a *keyframe* with RANSAC homographies (people masked out). Chaining frame-to-frame homographies
+  drifted 45 px to 289 px on a static camera, hence keyframes (0.3-1 px from direct SIFT registration after 10 min).
+  Detections are mapped back to the calibration view before tracking; the per-frame motion is stored in the record.
+- **Viewpoint** (`courtbird/court/viewpoint.py`) reports `beta`, the angle between the viewing direction (on the
+  floor) and the court's long axis. From the calibration it is exact on synthetic cameras (3 px corner noise:
+  median position error 0.64 m, 95% correct end/corner/side class over 300 random cameras). Without calibration
+  it is estimated from people alone (person height vs foot row gives the horizon; the court axis is the direction
+  between the two teams' centroids): in simulation median error ~8 degrees and ~86% right end-vs-side, a coarse
+  hint only. Plain image layout does not work: end and side views both make players look wide.
 
-Honest limits (measured on the test video, one venue): it tidies a hand-placed calibration and
-follows slow camera drift (a 5 s calibration carried to 60-600 s kept hugging the court edges), but
-it is not precise: seeds perturbed by 15 px converge to within ~23 px of each other, not to one
-answer, and it cannot find the court from scratch. That venue's court is a coloured floor area
-(no white volleyball lines; the strong white lines belong to another sport), so a line-only detector
-fails there. A from-scratch detector would need venue-independent cues (colour region + vanishing
-geometry, or a learned keypoint model).
+## Limits
 
-## Camera motion (pan / tilt / zoom)
+- One venue, one fixed-camera video. Camera-motion handling was validated on **synthetic** pan/zoom applied to real
+  frames (players land 0.17 m median from the fixed-camera result with compensation, 1.19 m without), not on
+  genuinely handheld footage. The layout-based viewpoint estimate was validated mainly in simulation.
+- No ground truth for ids: tracking quality is measured with proxies (id count, track length), not accuracy.
+- The court calibration is manual (clicks + snapping). Results are only as good as the calibration.
+- Team = side of the net, so players glued to the net can flip colour; same-kit players are told apart by motion only.
+- No ball detection or height estimation yet. Broadcast footage with camera cuts is not handled.
+- Only indoor volleyball is defined (`courtbird/sports/`); other net sports mean adding a `SportSpec`.
 
-`courtbird/court/camera_motion.py` estimates the camera motion of every frame from the static
-background (grid-spread corner features tracked from a *keyframe*, RANSAC homography, people
-masked out). Detections are mapped back to the calibration view before tracking, so the tracker and
-the single court calibration work in one fixed frame; the per-frame motion is stored in the record
-(`FrameState.camera`) and the viewer carries the court overlay through it. Fixed cameras snap to the
-identity (about 12% slower; `--no-camera` / the dialog checkbox turns it off). A calibration made at
-another time than the analysis start is carried over by direct SIFT registration (`calibrate`
-stores the frame time in the file).
+## Project layout
 
-What was measured, and what was not:
-- Chaining frame-to-frame homographies drifted 45 px (30 s) to 289 px (10 min) on a *static* camera,
-  so tracking is done against keyframes: 0.3-1 px from direct SIFT registration over 10 minutes.
-- Spreading the features over a grid (so the weakly textured floor constrains the fit) cut the
-  error at the court corners from ~31 px to ~4 px on known synthetic pan+zoom.
-- Real match clip warped with a known pan/zoom, analysed with vs without compensation: players land
-  0.17 m (median) from the fixed-camera result with it, 1.19 m without.
-- The only real video available has a fixed camera, so the motion path was validated on synthetic
-  motion applied to real frames, not on genuine handheld footage. Assumes mostly rotation about the
-  camera centre (distant background); large camera translation, very fast pans or a background with
-  no texture will degrade it.
+```
+courtbird/
+  schema.py, record.py      court-space data contract and the .cbrec file
+  sports/                   court definitions (volleyball)
+  perception/               RTMDet detector, tracker, offline post-processing
+  court/                    calibration, refinement, camera motion, viewpoint, players
+  render/                   top-view renderer (knows nothing about video)
+  viewer/                   PySide6 viewer / editor
+  pipeline.py               video -> record
+tools/                      calibration, analysis, metrics and debugging tools
+tests/                      unit tests (no GPU / video needed)
+docs/                       roadmap, model licence notes
+```
 
-## Viewpoint recognition (where was the video shot from?)
+## AI assistance
 
-`courtbird/court/viewpoint.py` gives two independent estimates, both stored in the record and shown in
-the viewer (camera glyph on the top view; Playback > Shooting viewpoint, Ctrl+I). Both report
-`beta`, the angle between the viewing direction (projected on the floor) and the court's long axis:
-~0 = looking down the court from behind an end line, ~90 = across from a sideline, between = corner.
+This project - the code, the tests and the documentation, including this README - was written with substantial
+help from an AI assistant (**Claude, by Anthropic, used through Claude Code**), working under the direction of the
+repository owner, who set the requirements, supplied the test footage and decided what to publish. The numbers
+in this README come from experiments run during that development on a single video; treat them as indicative and
+verify them on your own footage. Please open an issue if something looks wrong.
 
-- **From the calibration**: the court homography contains the camera pose. Focal length and camera
-  position follow from "the court axes are orthogonal and equally scaled" (principal point = image
-  centre). Exact on synthetic cameras; with 3 px noise on the court corners the median position error
-  was 0.64 m and the end/corner/side class was right 95% of the time (300 random cameras).
-- **From where people stand, without any calibration** (the "wide or tall layout" idea): person height
-  in pixels vs foot row gives the horizon and camera height; with a focal-length guess that gives
-  approximate floor coordinates, and the court axis is the direction between the two teams'
-  centroids (kit-colour clusters; falls back to the principal axis of positions). Moving people are
-  weighted up so many still spectators on a stand cannot define the floor plane. In simulation
-  (random cameras, 12 wandering players, 20 spectators, 2 px noise) the median error is ~8 degrees,
-  the 3-class accuracy ~79% and end-vs-side ~86% - a coarse hint, not a measurement. Looking at the
-  raw image layout alone would not work: both end and side views make the players look wide.
+## License
 
-On the test clip the two agree (24 degrees from the calibration, 17 from the layout: both "behind an
-end line"), but only one real video was available, so the layout estimate is validated mainly by
-simulation, and the calibration-based one inherits the quality of the (eyeballed) test calibration.
+Apache License 2.0 - see [LICENSE](LICENSE) and [NOTICE](NOTICE). Third-party software, model weights and
+methods are acknowledged in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); model-licence details are in
+[docs/licenses.md](docs/licenses.md). The match video used during development is not included and is not covered
+by this licence.

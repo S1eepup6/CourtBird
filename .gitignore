@@ -10,3 +10,6 @@ TestData/
 models/
 *.pth
 *.onnx
+# frames of test footage must not be committed
+docs/det_sample.jpg
+docs/*frame*
