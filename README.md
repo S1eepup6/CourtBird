@@ -90,3 +90,26 @@ answer, and it cannot find the court from scratch. That venue's court is a colou
 (no white volleyball lines; the strong white lines belong to another sport), so a line-only detector
 fails there. A from-scratch detector would need venue-independent cues (colour region + vanishing
 geometry, or a learned keypoint model).
+
+## Camera motion (pan / tilt / zoom)
+
+`courtbird/court/camera_motion.py` estimates the camera motion of every frame from the static
+background (grid-spread corner features tracked from a *keyframe*, RANSAC homography, people
+masked out). Detections are mapped back to the calibration view before tracking, so the tracker and
+the single court calibration work in one fixed frame; the per-frame motion is stored in the record
+(`FrameState.camera`) and the viewer carries the court overlay through it. Fixed cameras snap to the
+identity (about 12% slower; `--no-camera` / the dialog checkbox turns it off). A calibration made at
+another time than the analysis start is carried over by direct SIFT registration (`calibrate`
+stores the frame time in the file).
+
+What was measured, and what was not:
+- Chaining frame-to-frame homographies drifted 45 px (30 s) to 289 px (10 min) on a *static* camera,
+  so tracking is done against keyframes: 0.3-1 px from direct SIFT registration over 10 minutes.
+- Spreading the features over a grid (so the weakly textured floor constrains the fit) cut the
+  error at the court corners from ~31 px to ~4 px on known synthetic pan+zoom.
+- Real match clip warped with a known pan/zoom, analysed with vs without compensation: players land
+  0.17 m (median) from the fixed-camera result with it, 1.19 m without.
+- The only real video available has a fixed camera, so the motion path was validated on synthetic
+  motion applied to real frames, not on genuine handheld footage. Assumes mostly rotation about the
+  camera centre (distant background); large camera translation, very fast pans or a background with
+  no texture will degrade it.

@@ -50,6 +50,7 @@ def load(path: str | Path) -> Record:
             ball=Ball(**f["ball"]) if f["ball"] else None,
             visible_region=[tuple(p) for p in f["visible_region"]] if f["visible_region"] else None,
             hidden_regions=[[tuple(p) for p in poly] for poly in f["hidden_regions"]],
+            camera=f.get("camera"),
         ))
     return Record(sport=data["sport"], fps=data["fps"], source=data["source"], frames=frames,
                   calibration=data.get("calibration"))

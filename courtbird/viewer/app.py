@@ -190,11 +190,8 @@ class MainWindow(QMainWindow):
             self._set_record(dlg.record)
             self.session.dirty = True
             self.attach_video(dlg.video_path)
-            try:
-                self.calib = Calibration.load(dlg.calib.text(), self.spec)
-                self.show_frame(self.pos)
-            except Exception:
-                pass
+            # the record carries the calibration in the analysis start view (already set by _set_record)
+            self.show_frame(self.pos)
             self._update_title()
 
     def link_video(self):
@@ -318,22 +315,24 @@ class MainWindow(QMainWindow):
         if self.calib is None:
             cv2.putText(img, "link calibration (File menu) to see team zones", (20, 40), 0, 0.9, (0, 255, 255), 2)
         if self.calib is not None:
+            # the calibration is for the reference view; carry it through this frame's camera motion
+            calib = self.calib.moved(np.array(f.camera, float).reshape(3, 3)) if f.camera else self.calib
             if self.zones.isChecked():
-                self._draw_team_zones(img, f)
-            draw_court(img, self.calib, self.spec, show_points=False)
+                self._draw_team_zones(img, f, calib)
+            draw_court(img, calib, self.spec, show_points=False)
             for p in f.people:
-                u, v = self.calib.court_to_image(np.array([[p.x, p.y]]))[0]
+                u, v = calib.court_to_image(np.array([[p.x, p.y]]))[0]
                 c = TEAM_COLORS.get(p.team, UNKNOWN_TEAM)
                 cv2.circle(img, (int(u), int(v)), 9, c, -1, cv2.LINE_AA)
                 cv2.circle(img, (int(u), int(v)), 9, (255, 255, 255), 1, cv2.LINE_AA)
                 if self.ids.isChecked():
                     cv2.putText(img, str(p.id), (int(u) + 10, int(v) - 8), 0, 0.6, (255, 255, 255), 2, cv2.LINE_AA)
             if f.ball is not None:
-                u, v = self.calib.court_to_image(np.array([[f.ball.x, f.ball.y]]))[0]
+                u, v = calib.court_to_image(np.array([[f.ball.x, f.ball.y]]))[0]
                 cv2.circle(img, (int(u), int(v)), 7, (255, 255, 255), -1, cv2.LINE_AA)
         self.video_view.set_image(img)
 
-    def _draw_team_zones(self, img, frame_state):
+    def _draw_team_zones(self, img, frame_state, calib):
         """Tint each half of the court in its team colour and label it, so the video can be
         compared with the top view (which side is blue?)."""
         sp = self.spec
@@ -342,9 +341,9 @@ class MainWindow(QMainWindow):
         for team, (x0, x1) in zip(half_teams(sp, frame_state), ((0.0, sp.net_x), (sp.net_x, sp.length))):
             if team is None:
                 continue
-            quad = self.calib.court_to_image(np.array([(x0, 0), (x1, 0), (x1, sp.width), (x0, sp.width)]))
+            quad = calib.court_to_image(np.array([(x0, 0), (x1, 0), (x1, sp.width), (x0, sp.width)]))
             cv2.fillPoly(overlay, [quad.astype(np.int32)], TEAM_COLORS[team])
-            cx, cy = self.calib.court_to_image(np.array([[(x0 + x1) / 2, sp.width / 2]]))[0]
+            cx, cy = calib.court_to_image(np.array([[(x0 + x1) / 2, sp.width / 2]]))[0]
             labels.append((("BLUE", "RED")[team], int(cx), int(cy), TEAM_COLORS[team]))
         cv2.addWeighted(overlay, 0.28, img, 0.72, 0, img)
         for text, cx, cy, col in labels:

@@ -42,3 +42,6 @@ class FrameState:
     # Regions known NOT to be visible; the renderer shades these. Court areas that
     # are neither visible nor confidently hidden are simply left unshaded.
     hidden_regions: list[Polygon] = field(default_factory=list)
+    # Camera motion for this frame: 3x3 homography (row-major, 9 floats) mapping pixels of the
+    # calibration/reference view to this frame's pixels. None = camera did not move.
+    camera: Optional[list[float]] = None

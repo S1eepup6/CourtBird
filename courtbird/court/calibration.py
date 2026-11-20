@@ -36,6 +36,7 @@ class Calibration:
     points: list[tuple[str, float, float]]  # (landmark name, pixel x, pixel y)
     image_size: tuple[int, int]  # (width, height) the pixels refer to
     H: np.ndarray  # image -> court, 3x3
+    sec: float | None = None  # video time of the frame the points were clicked in (None = unknown)
 
     @classmethod
     def from_points(cls, spec: SportSpec, points: list[tuple[str, float, float]],
@@ -104,15 +105,35 @@ class Calibration:
         return _mask_polys(mask, xs[0], ys[0], step), _mask_polys(1 - mask, xs[0], ys[0], step)
 
     # --- io ------------------------------------------------------------------
+    def moved(self, M: np.ndarray) -> "Calibration":
+        """The same calibration seen through a camera motion M (reference-frame pixels -> pixels of
+        another frame): every calibration point is carried along, so the court projects correctly
+        into that frame."""
+        pts = np.array([[x, y] for _, x, y in self.points], np.float64).reshape(-1, 1, 2)
+        new = cv2.perspectiveTransform(pts, np.asarray(M, np.float64)).reshape(-1, 2)
+        points = [(n, float(x), float(y)) for (n, _, _), (x, y) in zip(self.points, new)]
+        H, _ = cv2.findHomography(np.array([[x, y] for _, x, y in points]),
+                                  np.array([[*self._court_of(n)] for n, _, _ in points]), 0)
+        return Calibration(self.sport, points, self.image_size, H, self.sec)
+
+    def _court_of(self, name: str) -> tuple[float, float]:
+        from ..sports import SPORTS
+        return landmarks(SPORTS[self.sport])[name]
+
     def to_dict(self) -> dict:
-        return {"sport": self.sport, "image_size": list(self.image_size),
-                "points": [[n, x, y] for n, x, y in self.points]}
+        d = {"sport": self.sport, "image_size": list(self.image_size),
+             "points": [[n, x, y] for n, x, y in self.points]}
+        if self.sec is not None:
+            d["sec"] = self.sec
+        return d
 
     @classmethod
     def from_dict(cls, d: dict, spec: SportSpec) -> "Calibration":
         if d["sport"] != spec.name:
             raise ValueError(f"calibration is for {d['sport']}, not {spec.name}")
-        return cls.from_points(spec, [tuple(p) for p in d["points"]], tuple(d["image_size"]))
+        calib = cls.from_points(spec, [tuple(p) for p in d["points"]], tuple(d["image_size"]))
+        calib.sec = d.get("sec")
+        return calib
 
     def save(self, path: str | Path) -> None:
         Path(path).write_text(json.dumps(self.to_dict(), indent=1), encoding="utf-8")

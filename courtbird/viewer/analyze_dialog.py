@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
-from PySide6.QtWidgets import (QComboBox, QDialog, QDoubleSpinBox, QFileDialog, QFormLayout, QHBoxLayout,
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFileDialog, QFormLayout, QHBoxLayout,
                                QLineEdit, QMessageBox, QProgressBar, QPushButton, QSpinBox, QVBoxLayout, QWidget)
 
 from ..court import Calibration
@@ -21,23 +21,23 @@ class Worker(QThread):
     done = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, video, calib, spec, model, stride, start, end):
+    def __init__(self, video, calib, spec, model, stride, start, end, camera=True):
         super().__init__()
-        self.args = (video, calib, spec, model, stride, start, end)
+        self.args = (video, calib, spec, model, stride, start, end, camera)
         self._cancel = False
 
     def cancel(self):
         self._cancel = True
 
     def run(self):
-        video, calib, spec, model, stride, start, end = self.args
+        video, calib, spec, model, stride, start, end, camera = self.args
 
         def prog(i, n):
             if self._cancel:
                 raise _Cancelled
             self.progress.emit(i, n)
         try:
-            self.done.emit(analyze(video, calib, spec, model, stride, start, end, prog))
+            self.done.emit(analyze(video, calib, spec, model, stride, start, end, prog, camera_motion=camera))
         except _Cancelled:
             self.failed.emit("")
         except Exception as e:  # surface any pipeline error in the dialog
@@ -79,6 +79,9 @@ class AnalyzeDialog(QDialog):
         form.addRow("프레임 간격", self.stride)
         form.addRow("시작", self.start)
         form.addRow("끝", self.end)
+        self.camera = QCheckBox("카메라 움직임 보정 (팬/줌, 고정 카메라면 꺼도 됨)")
+        self.camera.setChecked(True)
+        form.addRow("", self.camera)
         self.bar = QProgressBar(); self.bar.setVisible(False)
         self.run_btn = QPushButton("분석 시작"); self.cancel_btn = QPushButton("닫기")
         row = QHBoxLayout(); row.addStretch(); row.addWidget(self.run_btn); row.addWidget(self.cancel_btn)
@@ -96,7 +99,8 @@ class AnalyzeDialog(QDialog):
         model = "rtmdet-m-person" if self.model.currentIndex() == 0 else "rtmdet-nano-person"
         self.video_path = self.video.text()
         end = self.end.value() or None
-        self.worker = Worker(self.video_path, calib, self.spec, model, self.stride.value(), self.start.value(), end)
+        self.worker = Worker(self.video_path, calib, self.spec, model, self.stride.value(), self.start.value(), end,
+                             self.camera.isChecked())
         self.worker.progress.connect(lambda i, n: (self.bar.setMaximum(max(n, 1)), self.bar.setValue(i)))
         self.worker.done.connect(self._done); self.worker.failed.connect(self._failed)
         self.bar.setVisible(True); self.bar.setValue(0); self.run_btn.setEnabled(False)

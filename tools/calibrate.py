@@ -123,6 +123,7 @@ def main() -> int:
             state["i"] = len(names)
             print(f"refined: cost {fit.seed_cost:.2f} -> {fit.cost:.2f} px")
         elif k in (13, 10) and calib:
+            calib.sec = a.sec  # lets analysis relate this frame to wherever the analysis starts
             calib.save(a.out); print("saved", a.out, "mean err (m):", round(calib.reprojection_error(spec), 3)); return 0
 
 
