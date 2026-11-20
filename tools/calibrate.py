@@ -3,7 +3,12 @@
     python -m tools.calibrate VIDEO OUT.json [--sec 5] [--landmarks a,b,c,...]
 
 Click each requested landmark in the frame (a magnifier follows the cursor).
-Keys:  n skip landmark   u / right-click undo   +/- zoom magnifier   Enter save (needs >= 4)   q quit
+Keys:  n skip landmark   u / right-click undo   +/- zoom magnifier   r snap to lines/edges
+       Enter save (needs >= 4)   q quit
+
+`r` re-fits the four court corners to the line/colour-boundary evidence in the frame (each corner
+may move <= 35 px), which tidies up hand-clicked corners. It replaces your points by the 4 refined
+corners; press `u` to take your clicks back.
 Once 4+ points exist the court is overlaid live and per-point errors (metres) are shown, so a
 misplaced click stands out. More points than 4 are fitted by least squares.
 """
@@ -14,6 +19,7 @@ import cv2
 import numpy as np
 
 from courtbird.court import Calibration, landmarks
+from courtbird.court.refine import refine_calibration
 from courtbird.sports import SPORTS
 from courtbird.court.draw import draw_court
 
@@ -56,7 +62,14 @@ def main() -> int:
         elif ev == cv2.EVENT_RBUTTONDOWN:
             undo()
 
+    snapshot: list = []  # the points as clicked, restored by `u` right after `r`
+
     def undo():
+        if snapshot:
+            pts[:] = list(snapshot)
+            snapshot.clear()
+            state["i"] = len(pts) if len(pts) < len(names) else len(names)
+            return
         if pts:
             name = pts.pop()[0]
             state["i"] = names.index(name)
@@ -103,6 +116,12 @@ def main() -> int:
             state["zoom"] = min(8, state["zoom"] + 1)
         elif k == ord("-"):
             state["zoom"] = max(2, state["zoom"] - 1)
+        elif k == ord("r") and calib:
+            fit = refine_calibration(calib, frame, spec)
+            snapshot[:] = list(pts)
+            pts[:] = list(fit.calib.points)
+            state["i"] = len(names)
+            print(f"refined: cost {fit.seed_cost:.2f} -> {fit.cost:.2f} px")
         elif k in (13, 10) and calib:
             calib.save(a.out); print("saved", a.out, "mean err (m):", round(calib.reprojection_error(spec), 3)); return 0
 

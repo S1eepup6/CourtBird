@@ -74,3 +74,19 @@ a still frame put far-side players outside the court in the test video).
   there and labels it BLUE / RED, so the video can be compared with the top view. Records store their
   calibration, so this works as soon as a record is opened. Edit > swap teams (Ctrl+T) exchanges the
   colours for the whole record when blue turns out to be the other side.
+
+## Calibration refinement (line/edge snapping)
+
+`courtbird/court/refine.py` re-fits a rough calibration to the image: it builds "line evidence"
+(thin bright ridges + strong colour-region boundaries, people masked out), scores a calibration by
+how close the projected court lines are to that evidence, and optimises the four court corners
+(each may move <= 35 px, so another sport's lines further away cannot capture the fit).
+Use it from the calibration tool (`r` key) or `python -m tools.refine_demo VIDEO SEED.json out.png`.
+
+Honest limits (measured on the test video, one venue): it tidies a hand-placed calibration and
+follows slow camera drift (a 5 s calibration carried to 60-600 s kept hugging the court edges), but
+it is not precise: seeds perturbed by 15 px converge to within ~23 px of each other, not to one
+answer, and it cannot find the court from scratch. That venue's court is a coloured floor area
+(no white volleyball lines; the strong white lines belong to another sport), so a line-only detector
+fails there. A from-scratch detector would need venue-independent cues (colour region + vanishing
+geometry, or a learned keypoint model).
