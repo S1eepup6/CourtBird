@@ -22,6 +22,8 @@ class Record:
     source: str = ""
     frames: list[FrameState] = field(default_factory=list)
     calibration: dict | None = None  # Calibration.to_dict(), so a record can be re-projected/overlaid
+    # Where the video was shot from: {"calibration": ViewPoint dict, "layout": ViewPoint dict} (either may be missing)
+    viewpoint: dict | None = None
 
 
 def save(record: Record, path: str | Path) -> None:
@@ -31,6 +33,7 @@ def save(record: Record, path: str | Path) -> None:
         "fps": record.fps,
         "source": record.source,
         "calibration": record.calibration,
+        "viewpoint": record.viewpoint,
         "frames": [asdict(f) for f in record.frames],
     }
     with gzip.open(path, "wt", encoding="utf-8") as fh:
@@ -53,4 +56,4 @@ def load(path: str | Path) -> Record:
             camera=f.get("camera"),
         ))
     return Record(sport=data["sport"], fps=data["fps"], source=data["source"], frames=frames,
-                  calibration=data.get("calibration"))
+                  calibration=data.get("calibration"), viewpoint=data.get("viewpoint"))

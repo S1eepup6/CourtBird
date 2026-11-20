@@ -25,6 +25,7 @@ from .court import Calibration
 from .court.camera_motion import (MotionTracker, apply, box_mask, register, snap_static,
                                   stabilize_detections)
 from .court.players import detections
+from .court import viewpoint as viewpoint_mod
 from .perception.detector import PersonDetector
 from .perception.postprocess import finalize
 from .perception.tracking import Tracker
@@ -166,6 +167,7 @@ def analyze(video: str | Path, calib: Calibration, spec: SportSpec, model: str =
     people = finalize(tracker.all_tracks(), len(frame_idxs), dt, spec, calib)
     calib.sec = first / fps  # the reference view is the first analysed frame
     rec = Record(sport=spec.name, fps=fps / stride, source=Path(video).name, calibration=calib.to_dict())
+    rec.viewpoint = _viewpoints(tracker.all_tracks(), calib, spec)
     w, h = calib.image_size
     corners = np.array([[0, 0], [w, 0], [w, h], [0, h]], float)
     vis_cache: tuple[np.ndarray, list, list] | None = None
@@ -181,3 +183,20 @@ def analyze(video: str | Path, calib: Calibration, spec: SportSpec, model: str =
                                      hidden_regions=vis_cache[2],
                                      camera=[float(x) for x in M.ravel()] if moved else None))
     return rec
+
+
+def _viewpoints(tracks, calib: Calibration, spec: SportSpec) -> dict:
+    """Both camera-position estimates: from the calibration, and (independently) from where the
+    tracked people stand. Either may be missing if it cannot be computed."""
+    out = {}
+    try:
+        out["calibration"] = viewpoint_mod.from_calibration(calib, spec).to_dict()
+    except Exception:
+        pass
+    try:
+        vp = viewpoint_mod.from_tracks(tracks, calib.image_size)
+        if vp is not None:
+            out["layout"] = vp.to_dict()
+    except Exception:
+        pass
+    return out

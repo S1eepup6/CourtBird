@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFileDialog, 
 
 from .. import record as rec_io
 from ..court import Calibration
+from ..court.viewpoint import ViewPoint
 from ..court.draw import draw_court
 from ..render import TopViewRenderer
 from ..render.topview import TEAM_COLORS, UNKNOWN_TEAM, half_teams
@@ -32,6 +33,8 @@ class MainWindow(QMainWindow):
         self.path: Path | None = None
         self.video: VideoSource | None = None
         self.calib: Calibration | None = None
+        self.vp_calib: ViewPoint | None = None
+        self.vp_layout: ViewPoint | None = None
         self.pos = 0
         self._acc = 0.0
 
@@ -128,8 +131,36 @@ class MainWindow(QMainWindow):
         self._act(p, "다음 프레임", lambda: self.step(1), "Right")
         self._act(p, "1초 뒤로", lambda: self.step(-self._fps()), "Ctrl+Left")
         self._act(p, "1초 앞으로", lambda: self.step(self._fps()), "Ctrl+Right")
+        self._act(p, "촬영 시점 정보…", self.show_viewpoint, "Ctrl+I")
         h = self.menuBar().addMenu("도움말")
         self._act(h, "사용법", self.show_help)
+
+    @staticmethod
+    def _viewpoints_of(record: rec_io.Record):
+        def make(d):
+            if not d:
+                return None
+            d = dict(d)
+            d["position"] = tuple(d["position"]) if d.get("position") else None
+            return ViewPoint(**d)
+        vp = record.viewpoint or {}
+        return make(vp.get("calibration")), make(vp.get("layout"))
+
+    def show_viewpoint(self):
+        if self.session is None or (self.vp_calib is None and self.vp_layout is None):
+            QMessageBox.information(self, "촬영 시점", "이 기록에는 시점 정보가 없습니다 (새로 분석하면 생깁니다).")
+            return
+        lines = []
+        if self.vp_calib:
+            lines.append("코트 보정에서 계산:\n  " + self.vp_calib.describe(self.spec))
+        if self.vp_layout:
+            lines.append("선수 배치에서 추정 (보정과 무관):\n  " + self.vp_layout.describe(self.spec)
+                         + f"\n  신뢰도 {self.vp_layout.confidence:.1f}  ({self.vp_layout.note})")
+        if self.vp_calib and self.vp_layout:
+            gap = abs(self.vp_calib.beta - self.vp_layout.beta)
+            same = self.vp_calib.kind == self.vp_layout.kind
+            lines.append(f"두 추정의 차이: {gap:.0f}°  ({'같은 시점 분류' if same else '분류가 다름: 보정을 다시 확인해 보세요'})")
+        QMessageBox.information(self, "촬영 시점", "\n\n".join(lines))
 
     def show_help(self):
         QMessageBox.information(self, "사용법", (
@@ -172,6 +203,8 @@ class MainWindow(QMainWindow):
         self.slider.blockSignals(True)
         self.slider.setRange(0, max(0, len(self.session) - 1))
         self.slider.blockSignals(False)
+        self.vp_calib, self.vp_layout = self._viewpoints_of(record)
+        self.top.cam_pos = self.vp_calib.position if self.vp_calib and self.vp_calib.position else None
         if record.calibration:
             try:
                 self.calib = Calibration.from_dict(record.calibration, self.spec)

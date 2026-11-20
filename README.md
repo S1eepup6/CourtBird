@@ -113,3 +113,27 @@ What was measured, and what was not:
   motion applied to real frames, not on genuine handheld footage. Assumes mostly rotation about the
   camera centre (distant background); large camera translation, very fast pans or a background with
   no texture will degrade it.
+
+## Viewpoint recognition (where was the video shot from?)
+
+`courtbird/court/viewpoint.py` gives two independent estimates, both stored in the record and shown in
+the viewer (camera glyph on the top view; Playback > Shooting viewpoint, Ctrl+I). Both report
+`beta`, the angle between the viewing direction (projected on the floor) and the court's long axis:
+~0 = looking down the court from behind an end line, ~90 = across from a sideline, between = corner.
+
+- **From the calibration**: the court homography contains the camera pose. Focal length and camera
+  position follow from "the court axes are orthogonal and equally scaled" (principal point = image
+  centre). Exact on synthetic cameras; with 3 px noise on the court corners the median position error
+  was 0.64 m and the end/corner/side class was right 95% of the time (300 random cameras).
+- **From where people stand, without any calibration** (the "wide or tall layout" idea): person height
+  in pixels vs foot row gives the horizon and camera height; with a focal-length guess that gives
+  approximate floor coordinates, and the court axis is the direction between the two teams'
+  centroids (kit-colour clusters; falls back to the principal axis of positions). Moving people are
+  weighted up so many still spectators on a stand cannot define the floor plane. In simulation
+  (random cameras, 12 wandering players, 20 spectators, 2 px noise) the median error is ~8 degrees,
+  the 3-class accuracy ~79% and end-vs-side ~86% - a coarse hint, not a measurement. Looking at the
+  raw image layout alone would not work: both end and side views make the players look wide.
+
+On the test clip the two agree (24 degrees from the calibration, 17 from the layout: both "behind an
+end line"), but only one real video was available, so the layout estimate is validated mainly by
+simulation, and the calibration-based one inherits the quality of the (eyeballed) test calibration.

@@ -59,6 +59,8 @@ class TopViewWidget(ImageView):
         self.selected: tuple[str, int] | None = None  # ("person", id) | ("ball", 0)
         self._dragging = False
         self._checkpointed = False
+        self.cam_pos: tuple[float, float] | None = None  # estimated camera position, court metres
+        self.cam_label = "CAM"
         self.setMouseTracking(False)
         self.setFocusPolicy(Qt.StrongFocus)
 
@@ -92,8 +94,44 @@ class TopViewWidget(ImageView):
         return best
 
     # --- painting ----------------------------------------------------------------
+    def _draw_camera(self) -> None:
+        """Camera glyph where the video was shot from. Cameras are usually outside the drawn area,
+        so the glyph sits on its border in the camera's direction, pointing at the court."""
+        if self.cam_pos is None or self._img is None:
+            return
+        s, ox, oy = self._fit()
+        spec = self.renderer.spec
+        c = self._to_widget(spec.length / 2, spec.width / 2)
+        q = self._to_widget(*self.cam_pos)
+        x0, y0, x1, y1 = ox + 16, oy + 16, ox + self._img.width() * s - 16, oy + self._img.height() * s - 16
+        dx, dy = q.x() - c.x(), q.y() - c.y()
+        k = 1.0
+        if not (x0 <= q.x() <= x1 and y0 <= q.y() <= y1):
+            ks = []
+            if dx:
+                ks += [(x0 - c.x()) / dx, (x1 - c.x()) / dx]
+            if dy:
+                ks += [(y0 - c.y()) / dy, (y1 - c.y()) / dy]
+            k = min([v for v in ks if v > 0] or [1.0])
+        pos = QPointF(c.x() + dx * k, c.y() + dy * k)
+        n = max(float(np.hypot(dx, dy)), 1e-6)
+        ux, uy = -dx / n, -dy / n  # towards the court
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setPen(QPen(QColor(255, 255, 255), 2))
+        p.setBrush(QColor(30, 30, 30, 230))
+        p.drawEllipse(pos, 10, 10)
+        tip = QPointF(pos.x() + ux * 26, pos.y() + uy * 26)
+        left = QPointF(pos.x() + ux * 11 - uy * 7, pos.y() + uy * 11 + ux * 7)
+        right = QPointF(pos.x() + ux * 11 + uy * 7, pos.y() + uy * 11 - ux * 7)
+        p.setBrush(QColor(255, 220, 0))
+        p.drawPolygon([tip, left, right])
+        p.setPen(QColor(255, 255, 255))
+        p.drawText(QPointF(pos.x() - 14, pos.y() - 14), self.cam_label or "CAM")
+
     def paintEvent(self, e):
         super().paintEvent(e)
+        self._draw_camera()
         if self.session is None or not self.selected or not len(self.session):
             return
         f = self.session.frame(self.pos)
